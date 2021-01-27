@@ -53,6 +53,7 @@ pub fn compile_block<'a, 'b>(
     loop {
         let inst = remaining_instructions[0].clone();
         remaining_instructions = &remaining_instructions[1..];
+        info!("Parsing instr {:?}", inst);
 
         match inst {
             Instruction::BlockStart { produced_type } => {
@@ -102,7 +103,7 @@ pub fn compile_block<'a, 'b>(
                 if let Some(result) = result {
                     stack.push(result)
                 }
-            }
+            },
             Instruction::LoopStart { produced_type } => {
                 // The inner loop must have a basic block to hold its code
                 let inner_bb = f_ctx.generate_block();
@@ -159,7 +160,7 @@ pub fn compile_block<'a, 'b>(
                 if let Some(result) = result {
                     stack.push(result)
                 }
-            }
+            },
             Instruction::End => {
                 if !block_terminated {
                     let mut tt = termination_target.borrow_mut();
@@ -167,7 +168,7 @@ pub fn compile_block<'a, 'b>(
                     b.build_br(tt.bb);
                 }
                 return remaining_instructions;
-            }
+            },
 
             Instruction::Br { depth } => {
                 let index = breakout_stack.len() - 1 - depth as usize;
@@ -175,7 +176,7 @@ pub fn compile_block<'a, 'b>(
                 tt.add_jump(basic_block, &locals, &stack);
                 b.build_br(tt.bb);
                 block_terminated = true;
-            }
+            },
             Instruction::BrIf { depth } => {
                 let i32_v = stack.pop().unwrap();
                 let v = is_non_zero_i32(m_ctx, b, i32_v);
@@ -189,7 +190,7 @@ pub fn compile_block<'a, 'b>(
 
                 basic_block = else_block;
                 b.position_at_end(basic_block);
-            }
+            },
             Instruction::BrTable { table, default } => {
                 let switch_value = stack.pop().unwrap();
 
@@ -218,7 +219,7 @@ pub fn compile_block<'a, 'b>(
                 b.build_switch(switch_value, default_jump, &switch_options);
                 block_terminated = true;
             }
-
+,
             Instruction::Return => {
                 if f_ctx.has_return {
                     b.build_ret(stack.pop().unwrap());
@@ -226,17 +227,17 @@ pub fn compile_block<'a, 'b>(
                     b.build_ret_void();
                 }
                 block_terminated = true;
-            }
+            },
             Instruction::Unreachable => {
                 // Can't build two unreachable instructions in a row, so avoid that
                 if !block_terminated {
-                    let trap_call = get_stub_function(m_ctx, TRAP);
-                    b.build_call(trap_call, &[]);
+                    //let trap_call = get_stub_function(m_ctx, TRAP);
+                    //b.build_call(trap_call, &[]);
                     b.build_unreachable();
                 }
 
                 block_terminated = true;
-            }
+            },
 
             Instruction::Call { index } => {
                 let &(llvm_f, ref wasm_f) = &m_ctx.functions[index as usize];
@@ -253,7 +254,7 @@ pub fn compile_block<'a, 'b>(
                 if wasm_f.has_return() {
                     stack.push(result);
                 }
-            }
+            },
             Instruction::CallIndirect { type_index } => {
                 let table_index = stack.pop().unwrap();
                 assert_type(m_ctx, table_index, Type::I32);
@@ -289,11 +290,11 @@ pub fn compile_block<'a, 'b>(
                 if has_return {
                     stack.push(result);
                 }
-            }
+            },
             Instruction::Drop => {
                 stack.pop().unwrap();
-            }
-            Instruction::Nop => {}
+            },
+            Instruction::Nop => {},
             Instruction::Select => {
                 let v3 = stack.pop().unwrap();
                 let select_v = is_non_zero_i32(m_ctx, b, v3);
@@ -304,96 +305,94 @@ pub fn compile_block<'a, 'b>(
 
                 let res = b.build_select(select_v, v1, v2);
                 stack.push(res);
-            }
+            },
 
             Instruction::GetLocal { index } => {
                 stack.push(locals[index as usize]);
-            }
+            },
             Instruction::SetLocal { index } => {
                 let v = stack.pop().unwrap();
                 locals[index as usize] = v;
-            }
+            },
             Instruction::TeeLocal { index } => {
                 // Differs from `SetLocal` in that it doesn't pop it's operand off the stack
                 let v = *stack.last().unwrap();
                 locals[index as usize] = v;
-            }
+            },
 
             Instruction::GetGlobal { index } => {
                 let v = m_ctx.globals[index as usize].load(m_ctx, b);
                 stack.push(v);
-            }
+            },
             Instruction::SetGlobal { index } => {
                 let v = stack.pop().unwrap();
                 m_ctx.globals[index as usize].store(m_ctx, b, v);
             }
-
+,
             Instruction::I32Const(i) => {
                 let v = i.compile(m_ctx.llvm_ctx);
                 stack.push(v);
-            }
+            },
 
             Instruction::I32WrapI64 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::I64);
                 let result = b.build_trunc(v, <i32>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
 
             Instruction::I32ReinterpretF32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
                 let result = b.build_bit_cast(v, <i32>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
 
+            Instruction::I32ExtendSI16 => {
+                let v = stack.pop().unwrap();
+                let result = b.build_zext(v, <i32>::get_type(m_ctx.llvm_ctx));
+                stack.push(result);
+            },
+            Instruction::I32ExtendSI8 => {
+                let v = stack.pop().unwrap();
+                let result = b.build_zext(v, <i32>::get_type(m_ctx.llvm_ctx));
+                stack.push(result);
+            },
             Instruction::I32TruncSF32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
-                let result = if m_ctx.opt.use_fast_unsafe_implementations {
-                    b.build_fptosi(v, <i32>::get_type(m_ctx.llvm_ctx))
-                } else {
-                    b.build_call(get_stub_function(m_ctx, I32_TRUNC_F32), &[v])
-                };
+                //let result = if m_ctx.opt.use_fast_unsafe_implementations {
+                let result = b.build_fptosi(v, <i32>::get_type(m_ctx.llvm_ctx));
+                //} else {
+                //    b.build_call(get_stub_function(m_ctx, I32_TRUNC_F32), &[v])
+                //};
                 stack.push(result);
-            }
+            },
             Instruction::I32TruncUF32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
-                let result = if m_ctx.opt.use_fast_unsafe_implementations {
-                    b.build_fptoui(v, <u32>::get_type(m_ctx.llvm_ctx))
-                } else {
-                    b.build_call(get_stub_function(m_ctx, U32_TRUNC_F32), &[v])
-                };
+                let result = b.build_fptoui(v, <u32>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
             Instruction::I32TruncSF64 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
-                let result = if m_ctx.opt.use_fast_unsafe_implementations {
-                    b.build_fptosi(v, <i32>::get_type(m_ctx.llvm_ctx))
-                } else {
-                    b.build_call(get_stub_function(m_ctx, I32_TRUNC_F64), &[v])
-                };
+                let result = b.build_fptosi(v, <i32>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
             Instruction::I32TruncUF64 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
-                let result = if m_ctx.opt.use_fast_unsafe_implementations {
-                    b.build_fptoui(v, <u32>::get_type(m_ctx.llvm_ctx))
-                } else {
-                    b.build_call(get_stub_function(m_ctx, I32_TRUNC_F64), &[v])
-                };
+                let result = b.build_fptoui(v, <u32>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
 
             Instruction::I32Add => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| b.build_add(v1, v2));
-            }
+            },
             Instruction::I32And => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| b.build_and(v1, v2));
-            }
+            },
             Instruction::I32Clz => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::I32);
@@ -403,7 +402,7 @@ pub fn compile_block<'a, 'b>(
 
                 let result = b.build_call(get_stub_function(m_ctx, I32_CLZ), &[v, flag]);
                 stack.push(result);
-            }
+            },
             Instruction::I32Ctz => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::I32);
@@ -413,108 +412,130 @@ pub fn compile_block<'a, 'b>(
 
                 let result = b.build_call(get_stub_function(m_ctx, I32_CTZ), &[v, flag]);
                 stack.push(result);
-            }
+            },
             Instruction::I32DivS => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_div(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, I32_DIV), &[v1, v2])
-                    }
+                b.build_div(v1, v2)
+                    
                 });
-            }
+            },
             Instruction::I32DivU => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_udiv(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, U32_DIV), &[v1, v2])
-                    }
+                    b.build_udiv(v1, v2)
                 });
-            }
+            },
             Instruction::I32Mul => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| b.build_mul(v1, v2));
-            }
+            },
             Instruction::I32Or => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| b.build_or(v1, v2));
-            }
+            },
             Instruction::I32Popcnt => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::I32);
                 let result = b.build_call(get_stub_function(m_ctx, I32_CTPOP), &[v]);
                 stack.push(result);
-            }
+            },
             Instruction::I32RemS => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_srem(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, I32_REM), &[v1, v2])
-                    }
+                    b.build_srem(v1, v2)
                 });
-            }
+            },
             Instruction::I32RemU => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_urem(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, U32_REM), &[v1, v2])
-                    }
+                b.build_urem(v1, v2)
                 });
-            }
+            },
             Instruction::I32Rotl => {
                 let v2 = stack.pop().unwrap();
                 let v1 = stack.pop().unwrap();
                 assert_types(m_ctx, v1, v2, Type::I32);
-                let result = b.build_call(get_stub_function(m_ctx, I32_ROTL), &[v1, v2]);
+                
+                let result = if m_ctx.opt.expand_rot.unwrap_or(false) { 
+                    b.build_call(get_stub_function(m_ctx, I32_ROTL), &[v1, v1, v2])
+                } else {
+                
+                    let w = 31;
+                    let tpe = <i32>::get_type(m_ctx.llvm_ctx);
+                    let valsize: &Value = unsafe{llvm::ffi::core::LLVMConstInt(tpe.into(),w, 0).into()};
+
+                    // CHECK !! the order of the instructions affect the final WASM :)
+                    // Instruction reordering is important for diversification.
+
+                    // v2 & 31
+                    let tmp1 = b.build_and(v2, valsize);
+                    // (x << (v2 & 31))
+                    let tmp6  = b.build_shl(v1, tmp1);
+
+                    // -v2
+                    let tmp3 = b.build_neg(v2);
+                    // (-v2) & 31
+                    let tmp4  = b.build_and(tmp3, valsize);
+
+                    // (x >> ((-v2) & 31))
+                    let tmp5  = b.build_ashr(v1, tmp4);
+
+                    b.build_or(tmp6, tmp5)
+                };
                 stack.push(result);
-            }
+            },
             Instruction::I32Rotr => {
                 let v2 = stack.pop().unwrap();
                 let v1 = stack.pop().unwrap();
                 assert_types(m_ctx, v1, v2, Type::I32);
-                let result = b.build_call(get_stub_function(m_ctx, I32_ROTR), &[v1, v2]);
+
+                let result = if m_ctx.opt.expand_rot.unwrap_or(false) { 
+                    b.build_call(get_stub_function(m_ctx, I32_ROTR), &[v1, v1, v2])
+                } else {
+                // return (n>>c) | (n << ((-c) & mask));
+
+                    let w = 31;
+                    let tpe = <i32>::get_type(m_ctx.llvm_ctx);
+                    let valsize: &Value = unsafe{llvm::ffi::core::LLVMConstInt(tpe.into(),w, 0).into()};
+
+                    // CHECK !! the order of the instructions affect the final WASM :)
+                    // Instruction reordering is important for diversification.
+
+                    // v2 & 31
+                    let tmp1 = b.build_and(v2, valsize);
+                    // (x >> (v2 & 31))
+                    let tmp6  = b.build_ashr(v1, tmp1);
+
+                    // -v2
+                    let tmp3 = b.build_neg(v2);
+                    // (-v2) & 31
+                    let tmp4  = b.build_and(tmp3, valsize);
+
+                    // (x << ((-v2) & 31))
+                    let tmp5  = b.build_shl(v1, tmp4);
+
+                    
+
+                    b.build_or(tmp6, tmp5)
+                };
                 stack.push(result);
-            }
+            },
             Instruction::I32Shl => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_shl(v1, v2)
-                    } else {
-                        let bit_count = (32i32).compile(m_ctx.llvm_ctx);
-                        let corrected_shift = b.build_urem(v2, bit_count);
-                        b.build_shl(v1, corrected_shift)
-                    }
+                b.build_shl(v1, v2)
                 });
-            }
+            },
             Instruction::I32ShrS => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_ashr(v1, v2)
-                    } else {
-                        let bit_count = (32i32).compile(m_ctx.llvm_ctx);
-                        let corrected_shift = b.build_urem(v2, bit_count);
-                        b.build_ashr(v1, corrected_shift)
-                    }
+                b.build_ashr(v1, v2)
                 });
-            }
+            },
             Instruction::I32ShrU => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_lshr(v1, v2)
-                    } else {
-                        let bit_count = (32i32).compile(m_ctx.llvm_ctx);
-                        let corrected_shift = b.build_urem(v2, bit_count);
-                        b.build_lshr(v1, corrected_shift)
-                    }
+                b.build_lshr(v1, v2)
                 });
-            }
+            },
             Instruction::I32Sub => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| b.build_sub(v1, v2));
-            }
+            },
             Instruction::I32Xor => {
                 perform_bin_op(m_ctx, &mut stack, Type::I32, |v1, v2| b.build_xor(v1, v2));
-            }
+            },
 
             Instruction::I32Eqz => {
                 let v = stack.pop().unwrap();
@@ -523,71 +544,79 @@ pub fn compile_block<'a, 'b>(
                     b.build_unsigned_cmp(0i32.compile(m_ctx.llvm_ctx), v, Predicate::Equal);
                 let i32_result = b.build_zext(result, <i32>::get_type(m_ctx.llvm_ctx));
                 stack.push(i32_result);
-            }
+            },
             Instruction::I32Eq => i32_cmp_signed(m_ctx, b, &mut stack, Predicate::Equal),
             Instruction::I32Ne => i32_cmp_signed(m_ctx, b, &mut stack, Predicate::NotEqual),
             Instruction::I32LeS => i32_cmp_signed(m_ctx, b, &mut stack, Predicate::LessThanOrEqual),
             Instruction::I32LeU => {
                 i32_cmp_unsigned(m_ctx, b, &mut stack, Predicate::LessThanOrEqual)
-            }
+            },
             Instruction::I32LtS => i32_cmp_signed(m_ctx, b, &mut stack, Predicate::LessThan),
             Instruction::I32LtU => i32_cmp_unsigned(m_ctx, b, &mut stack, Predicate::LessThan),
             Instruction::I32GeS => {
                 i32_cmp_signed(m_ctx, b, &mut stack, Predicate::GreaterThanOrEqual)
-            }
+            },
             Instruction::I32GeU => {
                 i32_cmp_unsigned(m_ctx, b, &mut stack, Predicate::GreaterThanOrEqual)
-            }
+            },
             Instruction::I32GtS => i32_cmp_signed(m_ctx, b, &mut stack, Predicate::GreaterThan),
             Instruction::I32GtU => i32_cmp_unsigned(m_ctx, b, &mut stack, Predicate::GreaterThan),
 
             Instruction::I64Const(i) => {
                 let v = i.compile(m_ctx.llvm_ctx);
                 stack.push(v);
-            }
-
+            },
             Instruction::I64ExtendSI32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::I32);
                 let result = b.build_zext(v, <i64>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
             Instruction::I64ExtendUI32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::I32);
                 let result = b.build_sext(v, <i64>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
 
             Instruction::I64ReinterpretF64 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
                 let result = b.build_bit_cast(v, <i64>::get_type(m_ctx.llvm_ctx));
                 stack.push(result);
-            }
+            },
 
             Instruction::I64TruncSF32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
-                let result = b.build_call(get_stub_function(m_ctx, I64_TRUNC_F32), &[v]);
+                let result = b.build_bit_cast(v, 
+                    <i32>::get_type(m_ctx.llvm_ctx));
+
                 stack.push(result);
             }
             Instruction::I64TruncUF32 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
-                let result = b.build_call(get_stub_function(m_ctx, U64_TRUNC_F32), &[v]);
+                let result = b.build_bit_cast(v, 
+                    <i64>::get_type(m_ctx.llvm_ctx));
+                //let result = b.build_call(get_stub_function(m_ctx, U64_TRUNC_F32), &[v]);
                 stack.push(result);
             }
             Instruction::I64TruncSF64 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
-                let result = b.build_call(get_stub_function(m_ctx, I64_TRUNC_F64), &[v]);
+
+                let result = b.build_bit_cast(v, 
+                    <i64>::get_type(m_ctx.llvm_ctx));
+                //let result = b.build_call(get_stub_function(m_ctx, I64_TRUNC_F64), &[v]);
                 stack.push(result);
             }
             Instruction::I64TruncUF64 => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
-                let result = b.build_call(get_stub_function(m_ctx, U64_TRUNC_F64), &[v]);
+                let result = b.build_bit_cast(v, 
+                    <i64>::get_type(m_ctx.llvm_ctx));
+                //let result = b.build_call(get_stub_function(m_ctx, U64_TRUNC_F64), &[v]);
                 stack.push(result);
             }
 
@@ -619,20 +648,13 @@ pub fn compile_block<'a, 'b>(
             }
             Instruction::I64DivS => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_div(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, I64_DIV), &[v1, v2])
-                    }
+                b.build_div(v1, v2)
+                    
                 });
             }
             Instruction::I64DivU => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_udiv(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, U64_DIV), &[v1, v2])
-                    }
+                b.build_udiv(v1, v2)
                 });
             }
             Instruction::I64Mul => {
@@ -649,67 +671,101 @@ pub fn compile_block<'a, 'b>(
             }
             Instruction::I64RemS => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_srem(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, I64_REM), &[v1, v2])
-                    }
+                b.build_srem(v1, v2)
                 });
             }
             Instruction::I64RemU => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_urem(v1, v2)
-                    } else {
-                        b.build_call(get_stub_function(m_ctx, U64_REM), &[v1, v2])
-                    }
+                b.build_urem(v1, v2)
                 });
             }
             Instruction::I64Rotl => {
                 let v2 = stack.pop().unwrap();
                 let v1 = stack.pop().unwrap();
                 assert_types(m_ctx, v1, v2, Type::I64);
-                let result = b.build_call(get_stub_function(m_ctx, I64_ROTL), &[v1, v2]);
+
+
+                let result = if m_ctx.opt.expand_rot.unwrap_or(false) { 
+                    b.build_call(get_stub_function(m_ctx, I64_ROTL), &[v1, v1, v2])
+                } else {
+
+                    let w = 63;
+                    let tpe = <i32>::get_type(m_ctx.llvm_ctx);
+                    let valsize: &Value = unsafe{llvm::ffi::core::LLVMConstInt(tpe.into(),w, 0).into()};
+
+                    // CHECK !! the order of the instructions affect the final WASM :)
+                    // Instruction reordering is important for diversification.
+
+                    // v2 & 31
+                    let tmp1 = b.build_and(v2, valsize);
+                    // (x << (v2 & 31))
+                    let tmp6  = b.build_shl(v1, tmp1);
+
+                    // -v2
+                    let tmp3 = b.build_neg(v2);
+                    // (-v2) & 31
+                    let tmp4  = b.build_and(tmp3, valsize);
+
+                    // (x >> ((-v2) & 31))
+                    let tmp5  = b.build_ashr(v1, tmp4);
+
+                    
+
+                    b.build_or(tmp6, tmp5)
+                };
+
                 stack.push(result);
             }
             Instruction::I64Rotr => {
                 let v2 = stack.pop().unwrap();
                 let v1 = stack.pop().unwrap();
                 assert_types(m_ctx, v1, v2, Type::I64);
-                let result = b.build_call(get_stub_function(m_ctx, I64_ROTR), &[v1, v2]);
+                
+
+                let result = if m_ctx.opt.expand_rot.unwrap_or(false) { 
+                    b.build_call(get_stub_function(m_ctx, I64_ROTR), &[v1, v1, v2])
+                } else {
+
+                    let w = 63;
+                    let tpe = <i32>::get_type(m_ctx.llvm_ctx);
+                    let valsize: &Value = unsafe{llvm::ffi::core::LLVMConstInt(tpe.into(),w, 0).into()};
+
+                    // CHECK !! the order of the instructions affect the final WASM :)
+                    // Instruction reordering is important for diversification.
+
+                    // v2 & 31
+                    let tmp1 = b.build_and(v2, valsize);
+                    // (x >> (v2 & 31))
+                    let tmp6  = b.build_ashr(v1, tmp1);
+
+                    // -v2
+                    let tmp3 = b.build_neg(v2);
+                    // (-v2) & 31
+                    let tmp4  = b.build_and(tmp3, valsize);
+
+                    // (x << ((-v2) & 31))
+                    let tmp5  = b.build_shl(v1, tmp4);
+
+                    
+
+                    b.build_or(tmp6, tmp5)
+                };
+
                 stack.push(result);
             }
             Instruction::I64Shl => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_shl(v1, v2)
-                    } else {
-                        let bit_count = (64i64).compile(m_ctx.llvm_ctx);
-                        let corrected_shift = b.build_urem(v2, bit_count);
-                        b.build_shl(v1, corrected_shift)
-                    }
+                b.build_shl(v1, v2)    
                 });
             }
             Instruction::I64ShrS => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_ashr(v1, v2)
-                    } else {
-                        let bit_count = (64i64).compile(m_ctx.llvm_ctx);
-                        let corrected_shift = b.build_urem(v2, bit_count);
-                        b.build_ashr(v1, corrected_shift)
-                    }
+                b.build_ashr(v1, v2)    
                 });
             }
             Instruction::I64ShrU => {
                 perform_bin_op(m_ctx, &mut stack, Type::I64, |v1, v2| {
-                    if m_ctx.opt.use_fast_unsafe_implementations {
-                        b.build_lshr(v1, v2)
-                    } else {
-                        let bit_count = (64i64).compile(m_ctx.llvm_ctx);
-                        let corrected_shift = b.build_urem(v2, bit_count);
-                        b.build_lshr(v1, corrected_shift)
-                    }
+                b.build_lshr(v1, v2)
                 });
             }
             Instruction::I64Sub => {
@@ -730,7 +786,7 @@ pub fn compile_block<'a, 'b>(
             Instruction::I64Eq => i64_cmp_signed(m_ctx, b, &mut stack, Predicate::Equal),
             Instruction::I64Ne => i64_cmp_signed(m_ctx, b, &mut stack, Predicate::NotEqual),
             Instruction::I64LeS => i64_cmp_signed(m_ctx, b, &mut stack, Predicate::LessThanOrEqual),
-            Instruction::I64LeU => i64_cmp_unsigned(m_ctx, b, &mut stack, Predicate::LessThan),
+            Instruction::I64LeU => i64_cmp_unsigned(m_ctx, b, &mut stack, Predicate::LessThanOrEqual),
             Instruction::I64LtS => i64_cmp_signed(m_ctx, b, &mut stack, Predicate::LessThan),
             Instruction::I64LtU => i64_cmp_unsigned(m_ctx, b, &mut stack, Predicate::LessThan),
             Instruction::I64GeS => {
@@ -818,6 +874,8 @@ pub fn compile_block<'a, 'b>(
             Instruction::F32Trunc => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
+                //let result = b.build_bit_cast(v, <f32>::get_type(m_ctx.llvm_ctx));
+
                 let result = b.build_call(get_stub_function(m_ctx, F32_TRUNC_F32), &[v]);
                 stack.push(result);
             }
@@ -830,17 +888,39 @@ pub fn compile_block<'a, 'b>(
             Instruction::F32Gt => float_cmp(m_ctx, b, &mut stack, Predicate::GreaterThan),
 
             Instruction::F32Min => perform_bin_op(m_ctx, &mut stack, Type::F32, |v1, v2| {
-                b.build_call(get_stub_function(m_ctx, F32_MIN), &[v1, v2])
+                let tmp1 = b.build_signed_cmp(v1, v2, Predicate::LessThan);
+                b.build_select(tmp1, v1, v2)
+            }),
+            Instruction::F32CopySign => perform_bin_op(m_ctx, &mut stack, Type::F32, |v1, v2| {
+                b.build_call(
+                    get_stub_function(m_ctx, F32_CSIGN), &[v1, v2])
             }),
             Instruction::F32Max => perform_bin_op(m_ctx, &mut stack, Type::F32, |v1, v2| {
-                b.build_call(get_stub_function(m_ctx, F32_MAX), &[v1, v2])
+                let tmp1 = b.build_signed_cmp(v1, v2, Predicate::GreaterThan);
+                b.build_select(tmp1, v1, v2)
             }),
             Instruction::F32Floor => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F32);
+
                 let result = b.build_call(get_stub_function(m_ctx, F32_FLOOR), &[v]);
                 stack.push(result);
+            },
+            Instruction::F32Ceil => {
+                let v = stack.pop().unwrap();
+                assert_type(m_ctx, v, Type::F32);
+
+                let result = b.build_call(get_stub_function(m_ctx, F32_CEIL), &[v]);
+                stack.push(result);
+            },
+            Instruction::F32Nearest => {
+                let v = stack.pop().unwrap();
+                assert_type(m_ctx, v, Type::F32);
+
+                let result = b.build_call(get_stub_function(m_ctx, F32_NEAREST), &[v]);
+                stack.push(result);
             }
+
 
             Instruction::F64Const(i) => {
                 let v = i.compile(m_ctx.llvm_ctx);
@@ -918,6 +998,8 @@ pub fn compile_block<'a, 'b>(
             Instruction::F64Trunc => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
+
+                //let result = b.build_bit_cast(v, <f64>::get_type(m_ctx.llvm_ctx));
                 let result = b.build_call(get_stub_function(m_ctx, F64_TRUNC_F64), &[v]);
                 stack.push(result);
             }
@@ -929,16 +1011,37 @@ pub fn compile_block<'a, 'b>(
             Instruction::F64Ge => float_cmp(m_ctx, b, &mut stack, Predicate::GreaterThanOrEqual),
             Instruction::F64Gt => float_cmp(m_ctx, b, &mut stack, Predicate::GreaterThan),
 
+            Instruction::F64CopySign => perform_bin_op(m_ctx, &mut stack, Type::F64, |v1, v2| {
+                b.build_call(
+                    get_stub_function(m_ctx, F64_CSIGN), &[v1, v2])
+            }),
             Instruction::F64Min => perform_bin_op(m_ctx, &mut stack, Type::F64, |v1, v2| {
-                b.build_call(get_stub_function(m_ctx, F64_MIN), &[v1, v2])
+                let tmp1 = b.build_signed_cmp(v1, v2, Predicate::LessThan);
+                b.build_select(tmp1, v1, v2)
             }),
             Instruction::F64Max => perform_bin_op(m_ctx, &mut stack, Type::F64, |v1, v2| {
-                b.build_call(get_stub_function(m_ctx, F64_MAX), &[v1, v2])
+                let tmp1 = b.build_signed_cmp(v1, v2, Predicate::GreaterThan);
+                b.build_select(tmp1, v1, v2)
             }),
             Instruction::F64Floor => {
                 let v = stack.pop().unwrap();
                 assert_type(m_ctx, v, Type::F64);
+
                 let result = b.build_call(get_stub_function(m_ctx, F64_FLOOR), &[v]);
+                stack.push(result);
+            },
+            Instruction::F64Ceil => {
+                let v = stack.pop().unwrap();
+                assert_type(m_ctx, v, Type::F64);
+
+                let result = b.build_call(get_stub_function(m_ctx, F64_CEIL), &[v]);
+                stack.push(result);
+            },
+            Instruction::F64Nearest => {
+                let v = stack.pop().unwrap();
+                assert_type(m_ctx, v, Type::F64);
+
+                let result = b.build_call(get_stub_function(m_ctx, F64_NEAREST), &[v]);
                 stack.push(result);
             }
 
@@ -1151,9 +1254,21 @@ fn load_val<'a, L: Compile<'a>>(
     offset: u32,
 ) -> &'a Value {
     let stack_offset = stack.pop().unwrap();
-    let total_offset = b.build_add(stack_offset, offset.compile(m_ctx.llvm_ctx));
+
+    let total_offset = b.build_add(stack_offset, 
+        offset.compile(m_ctx.llvm_ctx));
 
     let ty = L::get_type(m_ctx.llvm_ctx);
+
+    let ptr = b.build_gep(m_ctx.linear_memory.unwrap()
+    , &[total_offset]);
+
+    let data_raw_ptr =
+    b.build_bit_cast(ptr, 
+       PointerType::new(ty));
+
+
+    /*
     let f = if ty == <i8>::get_type(m_ctx.llvm_ctx) {
         get_stub_function(m_ctx, GET_I8)
     } else if ty == <i16>::get_type(m_ctx.llvm_ctx) {
@@ -1168,8 +1283,10 @@ fn load_val<'a, L: Compile<'a>>(
         get_stub_function(m_ctx, GET_F64)
     } else {
         panic!("cannot load value of type {:?}", ty)
-    };
-    b.build_call(f, &[total_offset])
+    };*/
+    //b.build_call(f, &[total_offset])
+    
+    b.build_load(data_raw_ptr)
 }
 
 fn load_as_i32_sext<'a, L: Compile<'a>>(
@@ -1226,9 +1343,21 @@ fn store_val<'a, L: Compile<'a>>(
     val: &Value,
 ) {
     let stack_offset = stack.pop().unwrap();
-    let total_offset = b.build_add(stack_offset, offset.compile(m_ctx.llvm_ctx));
+
+    let total_offset = b.build_add(stack_offset, 
+        offset.compile(m_ctx.llvm_ctx));
 
     let ty = L::get_type(m_ctx.llvm_ctx);
+
+    let ptr = b.build_gep(m_ctx.linear_memory.unwrap()
+    , &[total_offset]);
+
+    let data_raw_ptr =
+    b.build_bit_cast(ptr, 
+       PointerType::new(ty));
+
+    b.build_store(val, data_raw_ptr);
+    /*
     let f = if ty == <i8>::get_type(m_ctx.llvm_ctx) {
         get_stub_function(m_ctx, SET_I8)
     } else if ty == <i16>::get_type(m_ctx.llvm_ctx) {
@@ -1245,5 +1374,5 @@ fn store_val<'a, L: Compile<'a>>(
         panic!("cannot store value of type {:?}", ty)
     };
 
-    b.build_call(f, &[total_offset, val]);
+    b.build_call(f, &[total_offset, val]);*/
 }

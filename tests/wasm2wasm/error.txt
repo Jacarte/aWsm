@@ -1,0 +1,5 @@
+INFO [silverfish] running silverfish("babbage.wat.wasm", Some("babbage.wat.bc"))
+INFO [silverfish::wasm] Globals taking up 20 bytes
+INFO [silverfish::wasm] Data initializers taking up 55 bytes
+INFO [silverfish::wasm] Function table entries 0 (ignoring fragmentation)
+Assertion failed: (getOperand(1)->getType()->isPointerTy() && "Ptr must have pointer type!"), function AssertOK, file /Users/javierca/Documents/Develop/llvm/llvm-project/llvm/lib/IR/Instructions.cpp, line 1394.
