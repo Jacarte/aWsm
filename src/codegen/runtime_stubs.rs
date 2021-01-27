@@ -115,6 +115,10 @@ pub const F64_TRUNC_F64: &str = "llvm.trunc.f64";
 
 pub const INITIALIZE_REGION_STUB: &str = "initialize_region";
 
+// Intrinsic llvm memory ops for Wasm
+pub const MEMORY_SIZE: &str = "llvm.wasm.memory.size";
+pub const MEMORY_GROW: &str = "llvm.wasm.memory.grow";
+
 // TODO: Rewrite this using macros, because this is just gross
 pub fn insert_runtime_stubs(opt: &Opt, ctx: &LLVMCtx, m: &LLVMModule) {
     // Initialize region stub, which is a helper function to setup memory
@@ -213,6 +217,21 @@ pub fn insert_runtime_stubs(opt: &Opt, ctx: &LLVMCtx, m: &LLVMModule) {
         <f64>::get_type(ctx)],
     );
     m.add_function(F64_CSIGN, f64_csign_type.to_super());
+    
+    let mem_size_tpe = FunctionType::new(
+        <i32>::get_type(ctx),
+        &[<i32>::get_type(ctx)],
+    );
+    m.add_function(MEMORY_SIZE, mem_size_tpe.to_super());
+    
+
+    let mem_grow_tpe = FunctionType::new(
+        <i32>::get_type(ctx),
+        &[<i32>::get_type(ctx), <i32>::get_type(ctx)],
+    );
+
+    m.add_function(MEMORY_GROW, mem_grow_tpe.to_super());
+    
     /*
     // Rotate left/right types
     let u32_rot_type = FunctionType::new(

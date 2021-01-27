@@ -57,6 +57,7 @@ pub struct Opt {
     /// Generate rotl operations as pure math
     #[structopt(long = "expand-rot")]
     expand_rot: Option<bool>,
+
 }
 
 fn main() -> io::Result<()> {

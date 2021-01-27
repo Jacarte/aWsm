@@ -53,7 +53,7 @@ pub fn compile_block<'a, 'b>(
     loop {
         let inst = remaining_instructions[0].clone();
         remaining_instructions = &remaining_instructions[1..];
-        info!("Parsing instr {:?}", inst);
+        //info!("Parsing instr {:?}", inst);
 
         match inst {
             Instruction::BlockStart { produced_type } => {
@@ -321,7 +321,7 @@ pub fn compile_block<'a, 'b>(
             },
 
             Instruction::GetGlobal { index } => {
-                let v = m_ctx.globals[index as usize].load(m_ctx, b);
+                let v = &*m_ctx.globals[index as usize].load(m_ctx, b);
                 stack.push(v);
             },
             Instruction::SetGlobal { index } => {
@@ -1135,6 +1135,25 @@ pub fn compile_block<'a, 'b>(
                 let v = stack.pop().unwrap();
                 store_val::<f64>(m_ctx, b, &mut stack, offset, v);
             }
+            // Add this behavior to Memory Object
+            Instruction::MemorySize  => {
+                let size = b.build_call(
+                    get_stub_function(m_ctx, MEMORY_SIZE),
+                    &[0.compile(m_ctx.llvm_ctx)],
+                );
+                stack.push(size);
+            }
+
+            Instruction::MemoryGrow  => {
+                let v = stack.pop().unwrap();
+
+                let r = b.build_call(
+                    get_stub_function(m_ctx, MEMORY_GROW),
+                    &[0.compile(m_ctx.llvm_ctx), v],
+                );
+
+                stack.push(r);
+            }
         }
     }
 }
@@ -1266,25 +1285,6 @@ fn load_val<'a, L: Compile<'a>>(
     let data_raw_ptr =
     b.build_bit_cast(ptr, 
        PointerType::new(ty));
-
-
-    /*
-    let f = if ty == <i8>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, GET_I8)
-    } else if ty == <i16>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, GET_I16)
-    } else if ty == <i32>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, GET_I32)
-    } else if ty == <i64>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, GET_I64)
-    } else if ty == <f32>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, GET_F32)
-    } else if ty == <f64>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, GET_F64)
-    } else {
-        panic!("cannot load value of type {:?}", ty)
-    };*/
-    //b.build_call(f, &[total_offset])
     
     b.build_load(data_raw_ptr)
 }
@@ -1357,22 +1357,5 @@ fn store_val<'a, L: Compile<'a>>(
        PointerType::new(ty));
 
     b.build_store(val, data_raw_ptr);
-    /*
-    let f = if ty == <i8>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, SET_I8)
-    } else if ty == <i16>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, SET_I16)
-    } else if ty == <i32>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, SET_I32)
-    } else if ty == <i64>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, SET_I64)
-    } else if ty == <f32>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, SET_F32)
-    } else if ty == <f64>::get_type(m_ctx.llvm_ctx) {
-        get_stub_function(m_ctx, SET_F64)
-    } else {
-        panic!("cannot store value of type {:?}", ty)
-    };
-
-    b.build_call(f, &[total_offset, val]);*/
+    
 }

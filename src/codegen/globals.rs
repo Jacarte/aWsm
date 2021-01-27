@@ -1,4 +1,4 @@
-use llvm::Builder;
+use llvm::{Builder, GlobalVariable, ffi::core::{LLVMSetThreadLocal, LLVMSetThreadLocalMode}};
 use llvm::Compile;
 use llvm::Context as LLVMCtx;
 use llvm::FunctionType;
@@ -19,24 +19,14 @@ use crate::codegen::type_conversions::wasm_type_to_llvm_type;
 
 pub enum GlobalValue<'a> {
     InlinedConstant(&'a Value),
-    Native(&'a Value),
-    RuntimeI32(u32),
-    RuntimeI64(u32),
+    Native(&'a GlobalVariable)
 }
 
 impl<'a> GlobalValue<'a> {
     pub fn load(&self, m_ctx: &'a ModuleCtx, b: &'a Builder) -> &'a Value {
         match self {
             GlobalValue::InlinedConstant(v) => v,
-            GlobalValue::Native(ptr) => b.build_load(ptr),
-            GlobalValue::RuntimeI32(idx) => {
-                let func = get_stub_function(m_ctx, GET_GLOBAL_I32);
-                b.build_call(func, &[idx.compile(m_ctx.llvm_ctx)])
-            }
-            GlobalValue::RuntimeI64(idx) => {
-                let func = get_stub_function(m_ctx, GET_GLOBAL_I64);
-                b.build_call(func, &[idx.compile(m_ctx.llvm_ctx)])
-            }
+            GlobalValue::Native(ptr) => b.build_load(ptr)
         }
     }
 
@@ -44,18 +34,12 @@ impl<'a> GlobalValue<'a> {
         match self {
             GlobalValue::InlinedConstant(_) => panic!("Cannot write to an inlined constant"),
             GlobalValue::Native(ptr) => {
+                
                 b.build_store(v, ptr);
-            }
-            GlobalValue::RuntimeI32(idx) => {
-                let func = get_stub_function(m_ctx, SET_GLOBAL_I32);
-                b.build_call(func, &[idx.compile(m_ctx.llvm_ctx), v]);
-            }
-            GlobalValue::RuntimeI64(idx) => {
-                let func = get_stub_function(m_ctx, SET_GLOBAL_I64);
-                b.build_call(func, &[idx.compile(m_ctx.llvm_ctx), v]);
             }
         }
     }
+
 }
 
 pub fn insert_globals<'a>(
@@ -82,9 +66,11 @@ fn insert_native_globals<'a>(
                 mutable,
             } => {
                 let llvm_global =
-                    llvm_module.add_global(&name, wasm_type_to_llvm_type(&*llvm_ctx, content_type));
+                    llvm_module.add_global(&name, 
+                        wasm_type_to_llvm_type(&*llvm_ctx, 
+                            content_type));
                 llvm_global.set_constant(!mutable);
-                GlobalValue::Native(llvm_global.to_super())
+                GlobalValue::Native(llvm_global)
             }
             Global::InModule {
                 generated_name,
@@ -96,9 +82,20 @@ fn insert_native_globals<'a>(
                 if opt.inline_constant_globals && !mutable {
                     GlobalValue::InlinedConstant(v)
                 } else {
+                    
                     let llvm_global = llvm_module.add_global_variable(&generated_name, v);
                     llvm_global.set_constant(!mutable);
-                    GlobalValue::Native(llvm_global.to_super())
+                    //llvm_global.set_linkage(llvm::Linkage::External);
+
+                    //unsafe{
+                   //     llvm::ffi::core::LLVMSetThreadLocal(llvm_global.into(),
+                    //     1);
+                    //    llvm::ffi::core::LLVMSetThreadLocalMode(llvm_global.into(), 
+                    //    llvm::ffi::LLVMThreadLocalMode::LLVMGeneralDynamicTLSModel);
+                    
+                    //}
+
+                    GlobalValue::Native(llvm_global)
                 }
             }
         };

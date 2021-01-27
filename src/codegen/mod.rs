@@ -86,24 +86,23 @@ pub fn process_to_llvm(
     // We need to insert runtime stubs, because code generation will call them for certain instructions
     insert_runtime_stubs(opt, &*llvm_ctx, &*llvm_module);
 
-    info!("Inserting globals...");
     // Wasm globals have a natural mapping to llvm globals
     let globals = insert_globals(&opt, llvm_ctx, llvm_module, wasm_module.globals);
 
 
-    info!("Prototyping functions...");
     // We need to prototype functions before implementing any, in case a function calls a function implemented after it
     let mut functions = Vec::new();
     for f in &wasm_module.functions {
 
-        info!("Adding function {}...", f.get_name().clone());
+        // Filtering out internal functions like __wasm_call_ctors
+
         let llvm_f = llvm_module.add_function(
             f.get_name(),
             wasm_func_type_to_llvm_type(&llvm_ctx, f.get_type()),
         );
         functions.push((&*llvm_f, f.clone()));
+        
 
-        info!("Done {}", f.get_name().clone());
     }
 
     // The global information about a module makes up the module context
@@ -125,7 +124,6 @@ pub fn process_to_llvm(
     // CROW we dont need this
     // add_memory_size_globals(&module_ctx, &wasm_module.memories[0].limits);
 
-    info!("Checking mem ");
 
     // Which we then need to initialize the data
     if wasm_module.memories.len() >= 1 {
