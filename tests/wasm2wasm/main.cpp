@@ -12,12 +12,6 @@ int g(int a, int b){
 }
 
 
-float h(float a){
-
-	return floor(a);
-}
-
-
 int linear_mem[100];
 
 int i(int a, int b){
@@ -25,7 +19,13 @@ int i(int a, int b){
 	return 0;
 }
 
+extern int global2;
+
 
 int j(){
 	return __global_1;
+}
+
+int ga(){
+	return global2;
 }

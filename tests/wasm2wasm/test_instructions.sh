@@ -248,8 +248,6 @@ check_mem_load "i32" "load8_u load8_s load16_s load16_u load"
 check_mem_load "i64" "load32_s load32_u load"
 check_mem_load "f32 f64" "load"
 
-exit 1
-
 BINOPS_I="add sub mul xor and or shl shr_s shr_u div_s div_u rem_s rem_u"
 
 RELOPS_I=" eq ne lt_s lt_u gt_s gt_u ge_s ge_u le_u le_s"
@@ -363,13 +361,4 @@ bash test1.sh f64_floor.wat
 if ! grep -q f64.floor "f64_floor.wat.mirror.wat"; then
 	error f64_floor.wat.mirror.wat
 fi
-
-
-printf "Checking f64.floor ${COLOR_GREEN} ${CHANGES_ICON} ${NC}\n"
-
-
-
-bash test1.sh babbage.wat
-cat babbage.wat.mirror.wat
-
 clean

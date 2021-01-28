@@ -130,7 +130,7 @@ impl Function {
 
     pub fn get_name(&self) -> &str {
         match self {
-            Function::Imported { name, .. } => &name,
+            Function::Imported { appended, .. } => &appended,
             Function::Declared { .. } => {
                 panic!("Malformed wasm, a function was declared but not implemented")
             }

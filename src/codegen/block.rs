@@ -277,13 +277,24 @@ pub fn compile_block<'a, 'b>(
                 // args are pushed in the opposite order of their use
                 args.reverse();
 
+                
+                let f_idx = m_ctx.table_0.unwrap()
+                .function_indexes[type_index as usize];
+
+                let ( f_ptr_as_void, _ ) = m_ctx.functions[f_idx as usize];
+                //let (table_llvm_func, _) = 
+                //m_ctx.table_0.unwrap()[type_index as usize];
+
                 // Fetch the func pointer from our table
-                let f_ptr_as_void = b.build_call(
-                    get_stub_function(m_ctx, TABLE_FETCH),
-                    &[table_index, type_index.compile(m_ctx.llvm_ctx)],
-                );
+                //let f_ptr_as_void = b.build_call(
+                //    get_stub_function(m_ctx, TABLE_FETCH),
+                //    &[table_index, type_index.compile(m_ctx.llvm_ctx)],
+                //);
                 // Then cast it from a void pointer to a function pointer
-                let f_type = PointerType::new(wasm_func_type_to_llvm_type(m_ctx.llvm_ctx, f_type));
+                // Infer type from
+                let f_type = 
+                PointerType::new(wasm_func_type_to_llvm_type(m_ctx.llvm_ctx, f_type));
+
                 let f_ptr = b.build_bit_cast(f_ptr_as_void, f_type);
 
                 let result = b.build_value_call(f_ptr, &args);
@@ -321,6 +332,31 @@ pub fn compile_block<'a, 'b>(
             },
 
             Instruction::GetGlobal { index } => {
+
+                /*
+                unsafe{
+                    let asm = 
+                    std::ffi::CString::new("global.get 0").unwrap();
+        
+                    let constraint = 
+                    std::ffi::CString::new("=r").unwrap();
+        
+                    info!("Parameters created");
+
+                    let val = llvm::ffi::core::LLVMConstInlineAsm(
+                        <i32>::get_type(m_ctx.llvm_ctx).into(),
+                        asm.as_ptr(), 
+                        constraint.as_ptr(), 
+                        0, 0);
+
+                    info!("ASM inline created");
+
+                    let call = b.build_call(val.into(), &[]);
+
+                    info!("Call bult!");
+
+                    stack.push(call);
+                } */
                 let v = &*m_ctx.globals[index as usize].load(m_ctx, b);
                 stack.push(v);
             },

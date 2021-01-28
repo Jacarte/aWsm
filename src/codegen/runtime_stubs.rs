@@ -119,6 +119,7 @@ pub const INITIALIZE_REGION_STUB: &str = "initialize_region";
 pub const MEMORY_SIZE: &str = "llvm.wasm.memory.size";
 pub const MEMORY_GROW: &str = "llvm.wasm.memory.grow";
 
+
 // TODO: Rewrite this using macros, because this is just gross
 pub fn insert_runtime_stubs(opt: &Opt, ctx: &LLVMCtx, m: &LLVMModule) {
     // Initialize region stub, which is a helper function to setup memory
@@ -178,6 +179,10 @@ pub fn insert_runtime_stubs(opt: &Opt, ctx: &LLVMCtx, m: &LLVMModule) {
             .to_super(),
         );
     }*/
+    m.add_function(
+        GET_GLOBAL_I32,
+        FunctionType::new(<u32>::get_type(ctx), &[<u32>::get_type(ctx)]).to_super(),
+    );
 
     let u32_rot_type = FunctionType::new(
         <u32>::get_type(ctx),

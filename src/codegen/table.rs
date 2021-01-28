@@ -11,14 +11,34 @@ use crate::codegen::memory::generate_offset_function;
 
 use crate::codegen::runtime_stubs::*;
 
+use crate::Opt;
+use llvm::Module as LLVMModule;
+use llvm::Context as LLVMCtx;
+use llvm::Function as LLVMFunction;
+use crate::wasm::Function;
+
+pub fn get_table_functions<'a>(
+    opt: &Opt,
+    llvm_ctx: &'a LLVMCtx,
+    llvm_module: &'a LLVMModule,
+    functions: &'a Vec<(&'a LLVMFunction, Function)>,
+    tables: &'a Vec<TableInitializer>,
+) ->&'a TableInitializer {
+
+    assert_eq!(tables.len(), 1);
+
+    tables.get(0).unwrap().clone()
+}
+
 pub fn generate_table_initialization_stub(m_ctx: &ModuleCtx, initializers: Vec<TableInitializer>) {
     let mut initialization_data: Vec<(&llvm::Function, Vec<u32>)> = Vec::new();
 
     for (n, i) in initializers.into_iter().enumerate() {
         // We need to translate the offset expression into a usable value
         // So we compile a function that evaluates the expression, and use that
+        // Replace by function pointer
         let offset_func = generate_offset_function(m_ctx, "table", n, i.offset_expression);
-
+        
         initialization_data.push((&*offset_func, i.function_indexes));
     }
 

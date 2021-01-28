@@ -8,7 +8,7 @@ use llvm::Module as LLVMModule;
 use memory::generate_linear_memory_simulation;
 use wasmparser::FuncType;
 
-use crate::Opt;
+use crate::{Opt, wasm::TableInitializer};
 
 use crate::wasm::Export;
 use crate::wasm::Function;
@@ -33,7 +33,7 @@ mod runtime_stubs;
 use self::runtime_stubs::insert_runtime_stubs;
 
 mod table;
-use self::table::generate_table_initialization_stub;
+use self::table::{generate_table_initialization_stub, get_table_functions};
 
 mod type_conversions;
 use self::type_conversions::wasm_func_type_to_llvm_type;
@@ -44,6 +44,7 @@ pub struct ModuleCtx<'a> {
     linear_memory: Option<&'a GlobalVariable>,
     llvm_module: &'a LLVMModule,
     types: &'a [FuncType],
+    table_0: Option<&'a TableInitializer>,
     globals: &'a [GlobalValue<'a>],
     functions: &'a [(&'a LLVMFunction, Function)],
 }
@@ -89,8 +90,7 @@ pub fn process_to_llvm(
 
     // Wasm globals have a natural mapping to llvm globals
     let globals = insert_globals(&opt, llvm_ctx, llvm_module, wasm_module.globals);
-
-
+    
     // We need to prototype functions before implementing any, in case a function calls a function implemented after it
     let mut functions = Vec::new();
     for f in &wasm_module.functions {
@@ -114,6 +114,11 @@ pub fn process_to_llvm(
                     source, 
                     llvm_f, 
                     ctx);
+
+                    add_attr_to_function("wasm-import-name", 
+                    name, 
+                    llvm_f, 
+                    ctx);
                 }
             },
             _ => ()
@@ -123,12 +128,14 @@ pub fn process_to_llvm(
 
     }
 
+
     // The global information about a module makes up the module context
     let mut module_ctx = ModuleCtx {
         opt,
         llvm_ctx,
         llvm_module,
         linear_memory: None,
+        table_0: None,
         types: wasm_module.types.as_slice(),
         functions: functions.as_slice(),
         globals: globals.as_slice(),
@@ -157,9 +164,16 @@ pub fn process_to_llvm(
    
     if wasm_module.tables.len() >= 1 {
         info!("Generating table init...");
-        generate_table_initialization_stub(&module_ctx, wasm_module.table_initializers);
-        assert!(wasm_module.tables[0].limits.initial <= 1024);
-        assert!(wasm_module.tables[0].limits.maximum.unwrap_or(0) <= 1024);    
+
+        let table_0 = get_table_functions(&opt, llvm_ctx, llvm_module, 
+            &functions,
+     &wasm_module.table_initializers);
+
+        module_ctx.table_0 = Some(table_0);
+
+        //generate_table_initialization_stub(&module_ctx, wasm_module.table_initializers);
+       // assert!(wasm_module.tables[0].limits.initial <= 1024);
+        //assert!(wasm_module.tables[0].limits.maximum.unwrap_or(0) <= 1024);    
     }
     // Next we implement the implemented functions
     for f in wasm_module.functions {

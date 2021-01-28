@@ -3,3 +3,28 @@ Missing operations:
 - CLZ and CTZ are the same function
 - Instruction::I64LeU => i64_cmp_unsigned(m_ctx, b, &mut stack, Predicate::LessThanOrEqual),
 -                 let i32_result = b.build_zext(result, <i64>::get_type(m_ctx.llvm_ctx));
+
+
+By default all imports are to env module
+
+```
+
+        match f {
+            Function::Imported{source, name, ..} => {
+                // Add attribute
+                unsafe {
+
+                    let ctx: *mut llvm::ffi::LLVMContext = 
+                    std::mem::transmute(llvm_ctx as &llvm::Context);
+
+                    add_attr_to_function("wasm-import-module", 
+                    source, 
+                    llvm_f, 
+                    ctx);
+                }
+            },
+            _ => ()
+        }
+
+		Add the specific module name
+```

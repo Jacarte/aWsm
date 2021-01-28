@@ -274,7 +274,7 @@ int runtime_main(int argc, char** argv) {
     stub_init();
 
     switch_out_of_runtime();
-    int ret = wasmf_main(argc, array_offset);
+    int ret = wasmf_main(argc, arrgay_offset);
     switch_into_runtime();
 
     // Cancel any pending timeout

@@ -25,6 +25,8 @@ pub enum GlobalValue<'a> {
 impl<'a> GlobalValue<'a> {
     pub fn load(&self, m_ctx: &'a ModuleCtx, b: &'a Builder) -> &'a Value {
         match self {
+            // TODO in a future, since this will be used only for diversification, 
+            // change the native for runtime calls, and change them back in the final stage
             GlobalValue::InlinedConstant(v) => v,
             GlobalValue::Native(ptr) => b.build_load(ptr)
         }
@@ -41,6 +43,8 @@ impl<'a> GlobalValue<'a> {
     }
 
 }
+
+
 
 pub fn insert_globals<'a>(
     opt: &Opt,

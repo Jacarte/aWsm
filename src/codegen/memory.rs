@@ -32,9 +32,42 @@ pub fn add_memory_size_globals(ctx: &ModuleCtx, limits: &ResizableLimits) {
     max_pages_global.set_constant(true);
 }
 
-pub fn generate_linear_memory_simulation<'a>(ctx: &'a Context, module: &'a LLVMModule) -> &'a GlobalVariable {
+pub fn generate_linear_memory_simulation<'a>(ctx: &'a Context, module: &'a LLVMModule, initializers: Vec<DataInitializer>) -> &'a GlobalVariable {
     //let mut linear_mem: Vec<(&llvm::Function, Vec<u8>)> = Vec::new();
-    let data_vec: Vec<&Value> = (1..100).map(|byte| (byte as i8).compile(ctx)).collect();
+    let mut initialization_data: Vec<(i32, Vec<u8>)> = Vec::new();
+    let mut total = 0;
+    for (n, i) in initializers.into_iter().enumerate() {
+
+        let mut full_data = Vec::new();
+        assert_eq!(1, i.offset_expression.len());
+
+        let offset = match &i.offset_expression[0] {
+            Instruction::I32Const(v) => *v as i32,
+            Instruction::I64Const(v) => *v as i32,
+            _ => panic!("Data initializer should be a constant instruction")
+        };
+
+        for mut d in i.body {
+            full_data.append(&mut d);
+        }
+        total += full_data.len();
+        initialization_data.push((offset, full_data));
+    }
+
+    // get tentative static size of the memory (1024 * 64)
+    let pages = ((total as u32/(1024*64) + 1) as f64).round() as u32;
+    info!("Static memory size in pages count {}", pages);
+
+    let mut data_vec: Vec<&Value> = (0..pages*(1024*64)).map(|_| 0.compile(ctx)).collect();
+
+    // FIX: this is rough, try to do it in one pass
+    for (offset, vec) in initialization_data {
+        for i in offset..(offset + vec.len() as i32) {
+            let val = vec.get((i - offset) as usize).unwrap().compile(ctx);
+            data_vec[i as usize] = val;
+        }
+    }
+
     (*module).add_global_variable(&"linear_memory", Value::new_vector(&data_vec))
 }
 
