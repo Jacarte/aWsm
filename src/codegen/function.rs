@@ -16,7 +16,7 @@ use crate::codegen::type_conversions::wasm_type_to_zeroed_value;
 use crate::codegen::ModuleCtx;
 
 use crate::wasm::ImplementedFunction;
-
+use crate::wasm::Function::Imported as ImportedFunction;
 pub struct FunctionCtx<'a> {
     pub llvm_f: &'a Function,
     pub builder: &'a Builder,
@@ -33,13 +33,12 @@ impl<'a> FunctionCtx<'a> {
     }
 }
 
-unsafe fn add_string_attr(k: &str, v: &str, v_ref: *mut llvm::ffi::LLVMValue, ctx: &ModuleCtx) {
+unsafe fn add_string_attr(k: &str, v: &str, v_ref: *mut llvm::ffi::LLVMValue, llvm_ctx: *mut llvm::ffi::LLVMContext) {
     let idx = crate::llvm_externs::LLVMAttributeFunctionIndex;
 
     let target_features_key = CString::new(k).unwrap();
     let target_features_value = CString::new(v).unwrap();
 
-    let llvm_ctx: *mut llvm::ffi::LLVMContext = mem::transmute(ctx.llvm_ctx as &llvm::Context);
     let attr_ref = crate::llvm_externs::LLVMCreateStringAttribute(
         llvm_ctx,
         target_features_key.as_ptr(),
@@ -60,7 +59,30 @@ unsafe fn add_string_attr(k: &str, v: &str, v_ref: *mut llvm::ffi::LLVMValue, ct
 // TODO: Is this clearer than doing it up a level in the code?
 static CORTEX_OVERRIDE_MESSAGE_SENT: AtomicBool = AtomicBool::new(false);
 
+pub fn add_attr_to_function(k: &str, v: &str, llvm_f: &Function, ctx: *mut llvm::ffi::LLVMContext){
+    unsafe {
+
+        let v_ref: *mut llvm::ffi::LLVMValue = mem::transmute(llvm_f.to_super() as &Value);
+        let nounwind = CString::new("nounwind").unwrap();
+        let kind = crate::llvm_externs::LLVMGetEnumAttributeKindForName(nounwind.as_ptr(), nounwind.as_bytes().len());
+        let attr_ref = crate::llvm_externs::LLVMCreateEnumAttribute(ctx, kind, 0);
+
+        crate::llvm_externs::LLVMAddAttributeAtIndex(
+            v_ref,
+            crate::llvm_externs::LLVMAttributeFunctionIndex,
+            attr_ref
+        );
+
+            add_string_attr(
+                k, v,
+                v_ref,
+                ctx
+            );
+    }
+}
+
 pub fn compile_function(ctx: &ModuleCtx, f: &ImplementedFunction) {
+    // TODO improve the filtering to allow more than one fixed name
     let llvm_f = ctx.llvm_module.get_function(&f.generated_name).unwrap();
 
     // FIXME: This is a performance hack to include target features for cortex-m
@@ -101,6 +123,8 @@ pub fn compile_function(ctx: &ModuleCtx, f: &ImplementedFunction) {
             attr_ref
         );
 
+        let llvm_ctx: *mut llvm::ffi::LLVMContext = mem::transmute(ctx.llvm_ctx as &llvm::Context);
+
         if cm_override {
             if !CORTEX_OVERRIDE_MESSAGE_SENT.load(Ordering::Relaxed) {
                 info!("engaging cortex-m override");
@@ -113,70 +137,70 @@ pub fn compile_function(ctx: &ModuleCtx, f: &ImplementedFunction) {
                 "correctly-rounded-divide-sqrt-fp-math",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "disable-tail-calls",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "less-precise-fpmad",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "min-legal-vector-width",
                 "0",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "no-frame-pointer-elim",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "no-infs-fp-math",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "no-jump-tables",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "no-nans-fp-math",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "no-signed-zeros-fp-math",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "no-trapping-math",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             // add_string_attr(
@@ -190,21 +214,21 @@ pub fn compile_function(ctx: &ModuleCtx, f: &ImplementedFunction) {
                 "target-cpu",
                 "cortex-m7",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "unsafe-fp-math",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
             add_string_attr(
                 "use-soft-float",
                 "false",
                 v_ref,
-                ctx
+                llvm_ctx
             );
 
 
@@ -212,7 +236,7 @@ pub fn compile_function(ctx: &ModuleCtx, f: &ImplementedFunction) {
                 "target-features",
                 "+armv7e-m,+dsp,+fp-armv8d16,+fp-armv8d16sp,+fp16,+fp64,+fpregs,+hwdiv,+thumb-mode,+vfp2,+vfp2d16,+vfp2d16sp,+vfp2sp,+vfp3d16,+vfp3d16sp,+vfp4d16,+vfp4d16sp,-aes,-crc,-crypto,-dotprod,-fp16fml,-fullfp16,-hwdiv-arm,-lob,-mve,-mve.fp,-ras,-sb,-sha2",
                 v_ref,
-                ctx
+                llvm_ctx
             );
         }
     }
@@ -266,6 +290,7 @@ pub fn compile_function(ctx: &ModuleCtx, f: &ImplementedFunction) {
         Some(v) => builder.build_ret(v),
         None => builder.build_ret_void(),
     };
+
 }
 
 // NOTE: Handle loop at the call site by inserting phi instructions immediately

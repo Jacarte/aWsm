@@ -1,5 +1,6 @@
 use std::io;
 
+use Function::Imported;
 use llvm::{Context as LLVMCtx, GlobalVariable};
 use llvm::Function as LLVMFunction;
 use llvm::Module as LLVMModule;
@@ -18,7 +19,7 @@ mod block;
 mod breakout;
 
 mod function;
-use self::function::compile_function;
+use self::function::{compile_function, add_attr_to_function};
 
 mod globals;
 use self::globals::insert_globals;
@@ -69,7 +70,7 @@ pub fn process_to_llvm(
         }
     }
     // Remap WASM generated names to exported names
-    for e in wasm_module.exports {
+    /*for e in wasm_module.exports {
         match e {
             Export::Function { index, name } => {
                 wasm_module.functions[index].set_name(name);
@@ -80,7 +81,7 @@ pub fn process_to_llvm(
             // Exporting memory is meaningless in our native embedding
             Export::Memory { .. } => {}
         }
-    }
+    }*/
 
     info!("Inserting runtime stubs...");
     // We need to insert runtime stubs, because code generation will call them for certain instructions
@@ -94,14 +95,31 @@ pub fn process_to_llvm(
     let mut functions = Vec::new();
     for f in &wasm_module.functions {
 
-        // Filtering out internal functions like __wasm_call_ctors
+        // TODO Filtering out internal functions like __wasm_call_ctors
 
         let llvm_f = llvm_module.add_function(
             f.get_name(),
             wasm_func_type_to_llvm_type(&llvm_ctx, f.get_type()),
         );
+
+        match f {
+            Function::Imported{source, name, ..} => {
+                // Add attribute
+                unsafe {
+
+                    let ctx: *mut llvm::ffi::LLVMContext = 
+                    std::mem::transmute(llvm_ctx as &llvm::Context);
+
+                    add_attr_to_function("wasm-import-module", 
+                    source, 
+                    llvm_f, 
+                    ctx);
+                }
+            },
+            _ => ()
+        }
+
         functions.push((&*llvm_f, f.clone()));
-        
 
     }
 
@@ -128,7 +146,7 @@ pub fn process_to_llvm(
     // Which we then need to initialize the data
     if wasm_module.memories.len() >= 1 {
         info!("Generating mem init...");
-        let linear_mem: &GlobalVariable = generate_linear_memory_simulation(llvm_ctx, llvm_module);
+        let linear_mem: &GlobalVariable = generate_linear_memory_simulation(llvm_ctx, llvm_module, wasm_module.data_initializers);
         module_ctx.linear_memory = Some(linear_mem);
         //generate_memory_initialization_stub(&module_ctx, wasm_module.data_initializers);
     }    
@@ -145,6 +163,8 @@ pub fn process_to_llvm(
     }
     // Next we implement the implemented functions
     for f in wasm_module.functions {
+        // This is a bad approach, the implementation of compile should be implemented by all types of functions, 
+        // basic OOP
         if let Function::Implemented { f } = f {
             compile_function(&module_ctx, &f);
         }

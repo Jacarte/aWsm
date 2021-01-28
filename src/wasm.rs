@@ -130,7 +130,7 @@ impl Function {
 
     pub fn get_name(&self) -> &str {
         match self {
-            Function::Imported { appended, .. } => &appended,
+            Function::Imported { name, .. } => &name,
             Function::Declared { .. } => {
                 panic!("Malformed wasm, a function was declared but not implemented")
             }
@@ -987,7 +987,7 @@ impl WasmModule {
                     ImportSectionEntryType::Global(global_ty) => {
                         let source = module.to_string();
                         let name = field.to_string();
-                        let appended = source + "_" + &name;
+                        let appended = source + "." + &name;
 
                         self.globals.push(Global::Imported {
                             name: appended,
